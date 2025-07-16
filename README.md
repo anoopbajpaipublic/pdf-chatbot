@@ -114,22 +114,21 @@ json
 (Response may vary based on your PDF content)
 
 📂 Directory Structure Example
+
 bash
  
 pdf-chatbot/
+
 ├── .env
+
 ├── server.py
+
 ├── ThaiRecipes.pdf
+
 ├── requirements.txt
+
 └── .venv/
-✅ Optional: Add to requirements.txt
-txt
- 
-fastapi
-uvicorn
-python-dotenv
-phi
-Then:
+
 
 bash
  
