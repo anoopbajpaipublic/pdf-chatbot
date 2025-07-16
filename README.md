@@ -13,7 +13,7 @@ Internet connection
 ✅ Step 1: Clone or Copy the Code
 bash
 
-git clone <your-repo-url> pdf-chatbot
+git clone [  pdf-chatbot](https://github.com/anoopbajpaipublic/pdf-chatbot.git)
 cd pdf-chatbot
 Or manually copy server.py and related files.
 
