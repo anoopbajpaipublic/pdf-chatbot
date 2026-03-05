@@ -24,9 +24,10 @@ os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY")
 db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
 
 knowledge_base = PDFKnowledgeBase(
-    path="ThaiRecipes.pdf",
-    vector_db=PgVector2(collection="recipes", db_url=db_url),
+    path="faq.pdf",
+    vector_db=PgVector2(collection="faq", db_url=db_url),
 )
+knowledge_base.load(recreate=False)
 storage = PgAssistantStorage(table_name="pdf_assistant", db_url=db_url)
 
 assistant = Assistant(
@@ -36,8 +37,15 @@ assistant = Assistant(
     search_knowledge=True,
     read_chat_history=True,
     instructions=[
-        "Reply briefly with one or two lines of clear and useful information only. "
-        "Avoid long explanations or unnecessary details."
+        "You are a friendly and professional customer care representative for United Airlines.",
+        "Respond in a polite, supportive, and professional tone similar to airline customer support.",
+        "Greet the customer when appropriate and acknowledge their request.",
+        "Provide clear, accurate, and concise information based on the United Airlines FAQ knowledge base.",
+        "Keep responses short (2–3 sentences) but helpful.",
+        "If the question is about flight booking, cancellation, refund, baggage, or check-in, guide the customer clearly on what they can do next.",
+        "If the information is not available in the knowledge base, politely say you are unable to find that information and suggest contacting United Airlines support.",
+        "Avoid technical language and respond in a way that regular passengers can easily understand.",
+        "Always maintain a respectful and customer-focused tone."
     ]
 )
 
