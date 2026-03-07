@@ -1,10 +1,12 @@
 from fastapi import FastAPI, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from phi.assistant import Assistant
 from phi.storage.assistant.postgres import PgAssistantStorage
 from phi.knowledge.pdf import PDFKnowledgeBase
 from phi.vectordb.pgvector import PgVector2
 import os
+import json
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -13,7 +15,7 @@ load_dotenv()
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Or replace with ["http://localhost:3000"] for security
+    allow_origins=["*"],  # Or replace with [\"http://localhost:3000\"] for security
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -53,6 +55,7 @@ assistant = Assistant(
 # Request model
 class Message(BaseModel):
     query: str
+
  
 @app.post("/chat")
 async def chat_with_pdf(msg: Message):
@@ -78,3 +81,42 @@ async def chat_with_pdf(msg: Message):
     except Exception as e:
         print("❌ Error:", e)
         return {"error": str(e)}
+
+
+@app.post("/chat/stream")
+async def chat_stream(msg: Message):
+    """
+    Server-Sent Events streaming endpoint.
+    Each token is sent as:  data: <token>\n\n
+    A final  data: [DONE]\n\n  marks the end of the stream.
+    """
+    async def event_generator():
+        try:
+            print(f"[stream] Received query: {msg.query}")
+            response_gen = assistant.run(msg.query, stream=True)
+
+            for chunk in response_gen:
+                token = ""
+                if hasattr(chunk, "message") and hasattr(chunk.message, "content"):
+                    token = chunk.message.content or ""
+                elif isinstance(chunk, str):
+                    token = chunk
+
+                if token:
+                    # SSE format
+                    yield f"data: {token}\n\n"
+
+            yield "data: [DONE]\n\n"
+
+        except Exception as e:
+            print("❌ Stream error:", e)
+            yield f"data: [ERROR] {str(e)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
