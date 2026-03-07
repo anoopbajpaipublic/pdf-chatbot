@@ -23,7 +23,11 @@ app.add_middleware(
 
 # Setup
 os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY")
-db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+
+# Read DB URL from environment (Render injects DATABASE_URL automatically).
+# phi/pgvector requires the psycopg driver prefix: postgresql+psycopg://
+_raw_db_url = os.getenv("DATABASE_URL", "postgresql+psycopg://ai:ai@localhost:5532/ai")
+db_url = _raw_db_url.replace("postgresql://", "postgresql+psycopg://", 1)
 
 knowledge_base = PDFKnowledgeBase(
     path="faq.pdf",
