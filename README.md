@@ -1,140 +1,139 @@
-# pdf-chatbot (OLLAMA Edition)
+# pdf-chatbot
+AI-powered chatbot that answers natural language questions based on the content of a PDF using vector search and LLMs (Groq/OpenAI). Built with FastAPI, pgvector, and Phi.
 
-AI-powered chatbot that answers natural language questions based on the content of a PDF using vector search and a **100% local** LLM. Built with FastAPI, pgvector, phidata, and OLLAMA — **no API keys, no cloud costs**.
+🛠️ Prerequisites
+Python 3.10+ installed
 
----
+Docker installed and running
 
-## Prerequisites
+Git (optional)
 
-| Tool | Minimum Version |
-|------|----------------|
-| Python | 3.10+ |
-| Docker | Any recent version |
-| [OLLAMA](https://ollama.com/download) | Latest |
+Internet connection
 
----
+✅ Step 1: Clone or Copy the Code
+bash
 
-## Step 1 — Install OLLAMA and Pull Models
-
-```bash
-# macOS
-brew install ollama
-
-# Start the OLLAMA server (keep this running in a separate terminal)
-ollama serve
-
-# Pull the chat model (llama3.1 supports the tool-calling required for knowledge)
-ollama pull llama3.1
-
-# Pull the embedding model (used to index your PDF)
-ollama pull nomic-embed-text
-```
-
----
-
-## Step 2 — Clone the Repo and Set Up Virtual Environment
-
-```bash
-git clone https://github.com/anoopbajpaipublic/pdf-chatbot.git
+git clone [  pdf-chatbot](https://github.com/anoopbajpaipublic/pdf-chatbot.git)
 cd pdf-chatbot
+Or manually copy server.py and related files.
 
+✅ Step 2: Create Virtual Environment and Install Dependencies
+bash
+ 
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
-```
+If no requirements.txt, create one manually:
 
----
+txt
+ 
+fastapi
+uvicorn
+python-dotenv
+phi
+✅ Step 3: Set Up Environment Variables
+Create a .env file in the root folder:
 
-## Step 3 — Configure Environment Variables
+env
 
-```bash
-cp dot-env.sample .env
-```
+GROQ_API_KEY=sk-xxxxxx   # Replace with your key
+OPENAI_API_KEY=sk-xxxxxx # Optional, in case you're using OpenAI
+✅ Step 4: Get Your API Keys
+🔑 Get Groq API Key
+Go to https://console.groq.com/
 
-The defaults work out of the box with the Docker setup below. Edit `.env` only if your setup differs:
+Sign in or sign up.
 
-```env
-OLLAMA_HOST=http://localhost:11434
-DATABASE_URL=postgresql+psycopg://ai:ai@localhost:5532/ai
-```
+Navigate to API Keys.
 
----
+Generate and copy the key.
 
-## Step 4 — Start PostgreSQL + pgvector via Docker
+Paste into your .env.
 
-```bash
+🔑 Get OpenAI API Key (if needed)
+Go to https://platform.openai.com/
+
+Create an account.
+
+Visit https://platform.openai.com/api-keys
+
+Generate a key and copy it.
+
+Paste into your .env.
+
+✅ Step 5: Run PostgreSQL + pgvector via Docker
+bash
+ 
 docker run --name pgvector \
   -e POSTGRES_USER=ai \
   -e POSTGRES_PASSWORD=ai \
   -e POSTGRES_DB=ai \
   -p 5532:5432 \
   -d ankane/pgvector
-```
+You can check logs:
 
----
+bash
+ 
+docker logs -f pgvector
+✅ Step 6: Load PDF into Vector DB (Automatically Handled)
+In your code:
 
-## Step 5 — Add Your PDF
+python
+ 
+knowledge_base = PDFKnowledgeBase(
+    path="ThaiRecipes.pdf",
+    vector_db=PgVector2(collection="recipes", db_url=db_url),
+)
+When the app runs the first time, the PDF will be loaded into the vector DB using pgvector (as long as the recipes collection doesn't already exist).
 
-Place your PDF in the project root. The default file is `CetaphilBabySkinCare.pdf`.  
-To use a different file, update the `path=` argument in `server.py`.
+📌 Make sure ThaiRecipes.pdf is placed in the project root.
 
----
-
-## Step 6 — Run the App
-
-```bash
+✅ Step 7: Run the App
+bash
+ 
 uvicorn server:app --reload
-```
+You should see:
 
-On first run the PDF is automatically chunked, embedded with `nomic-embed-text`, and stored in pgvector. Subsequent runs reuse the stored embeddings.
+nginx
+ 
+Uvicorn running on http://127.0.0.1:8000
+✅ Step 8: Test the Endpoint
+Run this in your terminal:
 
----
-
-## Step 7 — Test the Endpoints
-
-### Non-streaming chat
-
-```bash
+bash
+ 
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
-  -d '{"query": "What is the cancellation policy?"}'
-```
+  -d '{"query": "What recipes use coconut milk?"}'
+Expected result:
 
-Expected:
+json
+ 
+{"response":"Coconut milk is used in Thai green curry and some soups."}
+(Response may vary based on your PDF content)
 
-```json
-{"response": "United Airlines allows cancellations within 24 hours..."}
-```
+📂 Directory Structure Example
 
-### Streaming chat (SSE)
-
-```bash
-curl -N -X POST http://localhost:8000/chat/stream \
-  -H "Content-Type: application/json" \
-  -d '{"query": "How do I check in online?"}'
-```
-
-Tokens stream back in real-time, ending with `data: [DONE]`.
-
----
-
-## Directory Structure
-
-```
+bash
+ 
 pdf-chatbot/
+
 ├── .env
-├── dot-env.sample
+
 ├── server.py
-├──CetaphilBabySkinCare.pdf
+
+├── ThaiRecipes.pdf
+
 ├── requirements.txt
+
 └── .venv/
-```
 
----
 
-## Notes
+bash
+ 
+pip install -r requirements.txt
+💡 Notes
+On first run, PDFKnowledgeBase loads & indexes the file.
 
-- **First run**: PDF is loaded and indexed automatically (`recreate=False` skips re-indexing on subsequent starts).
-- **No API keys needed**: Everything runs locally via OLLAMA.
-- **Switch models**: Change `id="llama3"` in `server.py` to any model you have pulled locally (e.g. `llama3.2`, `mistral`, `gemma3`).
+No need to run any manual SQL for vector; PgVector2 handles it.

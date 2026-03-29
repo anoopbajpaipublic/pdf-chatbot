@@ -1,13 +1,12 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from phi.agent import Agent
-from phi.model.ollama import Ollama
-from phi.storage.agent.postgres import PgAgentStorage
+from phi.assistant import Assistant
+from phi.storage.assistant.postgres import PgAssistantStorage
 from phi.knowledge.pdf import PDFKnowledgeBase
 from phi.vectordb.pgvector import PgVector2
-from phi.embedder.ollama import OllamaEmbedder
 import os
+import json
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -16,54 +15,44 @@ load_dotenv()
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Or replace with [\"http://localhost:3000\"] for security
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Setup
+os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY")
 
 # Read DB URL from environment (Render injects DATABASE_URL automatically).
 # phi/pgvector requires the psycopg driver prefix: postgresql+psycopg://
 _raw_db_url = os.getenv("DATABASE_URL", "postgresql+psycopg://ai:ai@localhost:5532/ai")
 db_url = _raw_db_url.replace("postgresql://", "postgresql+psycopg://", 1)
 
-# OLLAMA host (defaults to localhost:11434 if not set)
-ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-
 knowledge_base = PDFKnowledgeBase(
-    path="CetaphilBabySkinCare.pdf",
-    vector_db=PgVector2(
-        collection="cetaphil",
-        db_url=db_url,
-        embedder=OllamaEmbedder(
-            model="nomic-embed-text",
-            host=ollama_host,
-            dimensions=768,  # nomic-embed-text output size
-        ),
-    ),
+    path="faq.pdf",
+    vector_db=PgVector2(collection="faq", db_url=db_url),
 )
-knowledge_base.load(recreate=True)
+knowledge_base.load(recreate=False)
+storage = PgAssistantStorage(table_name="pdf_assistant", db_url=db_url)
 
-storage = PgAgentStorage(table_name="pdf_agent", db_url=db_url)
-
-agent = Agent(
+assistant = Assistant(
     user_id="react_user",
-    model=Ollama(id="llama3.1", host=ollama_host),
-    knowledge=knowledge_base,
+    knowledge_base=knowledge_base,
     storage=storage,
     search_knowledge=True,
     read_chat_history=True,
     instructions=[
-        "You are an expert dermatologist specialized in Cetaphil products and baby skincare.",
-        "Respond in a warm, polite, and reassuring tone suitable for speaking with parents and caregivers.",
-        "Greet the user when appropriate and acknowledge their concerns about their baby's skin.",
-        "Provide clear, accurate, and concise information based on the Cetaphil Baby Skincare knowledge base.",
-        "Keep responses short (2-3 sentences) but highly practical and helpful.",
-        "Address queries regarding baby skincare routines, common skin issues, and recommend appropriate Cetaphil products.",
-        "If the information is not available in the knowledge base, politely state so and suggest they consult their pediatrician for personalized medical advice.",
-        "Avoid overly complex medical jargon and explain concepts in a way that parents can easily understand.",
-        "Always maintain a respectful, caring, and professional tone.",
-    ],
+        "You are a friendly and professional customer care representative for United Airlines.",
+        "Respond in a polite, supportive, and professional tone similar to airline customer support.",
+        "Greet the customer when appropriate and acknowledge their request.",
+        "Provide clear, accurate, and concise information based on the United Airlines FAQ knowledge base.",
+        "Keep responses short (2–3 sentences) but helpful.",
+        "If the question is about flight booking, cancellation, refund, baggage, or check-in, guide the customer clearly on what they can do next.",
+        "If the information is not available in the knowledge base, politely say you are unable to find that information and suggest contacting United Airlines support.",
+        "Avoid technical language and respond in a way that regular passengers can easily understand.",
+        "Always maintain a respectful and customer-focused tone."
+    ]
 )
 
 
@@ -71,28 +60,26 @@ agent = Agent(
 class Message(BaseModel):
     query: str
 
-
+ 
 @app.post("/chat")
 async def chat_with_pdf(msg: Message):
     try:
         print(f"Received query: {msg.query}")
+        
+        response_gen = assistant.run(msg.query)
+        full_text = ""
 
-        run_response = agent.run(msg.query)
-
-        # phidata v2: RunResponse has a .content attribute
-        if hasattr(run_response, "content") and run_response.content:
-            full_text = run_response.content
-        else:
-            # Fallback: iterate if it's a generator
-            full_text = ""
-            for chunk in run_response:
-                if hasattr(chunk, "content") and chunk.content:
-                    full_text += chunk.content
-                elif isinstance(chunk, str):
-                    full_text += chunk
+        for step in response_gen:
+            if hasattr(step, "message") and hasattr(step.message, "content"):
+                full_text += step.message.content
+            elif isinstance(step, str):
+                full_text += step
+            else:
+                print("⚠️ Unrecognized step:", step)
 
         full_text = full_text.strip()
-        print(f"Agent response: {full_text}")
+
+        print(f"Assistant response: {full_text}")
         return {"response": full_text or "No response generated."}
 
     except Exception as e:
@@ -110,16 +97,17 @@ async def chat_stream(msg: Message):
     async def event_generator():
         try:
             print(f"[stream] Received query: {msg.query}")
-            response_gen = agent.run(msg.query, stream=True)
+            response_gen = assistant.run(msg.query, stream=True)
 
             for chunk in response_gen:
                 token = ""
-                if hasattr(chunk, "content") and chunk.content:
-                    token = chunk.content
+                if hasattr(chunk, "message") and hasattr(chunk.message, "content"):
+                    token = chunk.message.content or ""
                 elif isinstance(chunk, str):
                     token = chunk
 
                 if token:
+                    # SSE format
                     yield f"data: {token}\n\n"
 
             yield "data: [DONE]\n\n"

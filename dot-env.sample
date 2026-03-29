@@ -1,3 +1,2 @@
-# Copy this file to .env and adjust values as needed
-OLLAMA_HOST=http://localhost:11434
-DATABASE_URL=postgresql+psycopg://ai:ai@localhost:5532/ai
+GROQ_API_KEY=""
+OPENAI_API_KEY=""
